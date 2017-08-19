@@ -9,11 +9,11 @@ class DepChart {
         this.SPIRAL_FAC = 1;
         this.sentenceBases = [0];
         this.tokenData = [];
-
+        this.debugSlice = 17;
         d3.json("data/token_data.json", (err, resp) => {
             // console.log(err);
-            // console.log(resp);
-            // resp = resp.splice(0, 1) ;
+            // console.log(resp);            
+            resp = resp.slice(this.debugSlice, this.debugSlice + 1) ;
             let sentCounter = 0;          
             for(let sent of resp){
               sentCounter += sent.length;
@@ -40,11 +40,11 @@ class DepChart {
           console.log(err);
           return;
         }
-        
+        resp = resp.slice(this.debugSlice, this.debugSlice + 1) ;
         resp.forEach((sent_x, sent_i) => {
           sent_x.forEach((token_x) => {
-            token_x[2] += this.sentenceBases[sent_i];
-            token_x[4] += this.sentenceBases[sent_i];
+            token_x[2] += this.sentenceBases[sent_i] - 1;
+            token_x[4] += this.sentenceBases[sent_i] - 1;
           });
         });
         
@@ -53,6 +53,10 @@ class DepChart {
         console.log(depData);
         this.drawDeps(depData);
       })
+    }
+
+    computeR(theta){
+      return (theta / (2 * Math.PI) * this.SPIRAL_FAC + 1) * this.MIN_R;
     }
 
     measureToken(data){
@@ -75,10 +79,10 @@ class DepChart {
         let rCur = rLast;
         //! theta increments in polar
         let thetaCur = thetaLast;
-                
-        let thetaNext = thetaLast + 2 * Math.asin(d / (2 * rCur));
-        let rNext = (thetaNext / (2 * Math.PI) * this.SPIRAL_FAC + 1) * this.MIN_R;
-        // debugger;
+        
+        let thetaDelta = 2 * Math.asin(d / (2 * rCur));
+        let thetaNext = thetaLast + thetaDelta;
+        let rNext = this.computeR(thetaNext);        
         let coordCur = this.toCartesian(rCur, thetaCur);
         let coordNext = this.toCartesian(rNext, thetaNext);
 
@@ -91,6 +95,7 @@ class DepChart {
           h: p[i].offsetHeight,
           r: (rCur + rNext) / 2, 
           theta: thetaCur,
+          thetaDelta: thetaDelta,
           x: coordCur.x,          
           y: coordCur.y,          
           rot: rot * 180 / Math.PI
@@ -106,16 +111,24 @@ class DepChart {
     }
 
     preprocessDeps(rawDeps){      
-      let backwardLinks = new Map();
-      let forwardLinks = new Map();
+      rawDeps = rawDeps.filter((x)=>x[0] != "root");
+      let nToken = this.tokenData.length;
+      let backwardLinks = Array.apply(null, Array(nToken)).map((x)=>[])
+      let forwardLinks = Array.apply(null, Array(nToken)).map((x)=>[])
+      
       for (let dep of rawDeps){
         let govIdx = dep[2];
         let depIdx = dep[4];
 
         let precIdx = Math.min(govIdx, depIdx);
         let followIdx = Math.max(govIdx, depIdx);
-        let fwdData = forwardLinks[precIdx] || [];
-        let bckData = backwardLinks[followIdx] || [];
+        if (precIdx < 0) {
+          // ROOT case, not drawing this link
+          continue;
+        }
+        let fwdData = forwardLinks[precIdx];
+        let bckData = backwardLinks[followIdx];
+        
         
         fwdData.push(dep);
         bckData.push(dep);
@@ -127,7 +140,7 @@ class DepChart {
       let depDistCompareFunc = (a,b)=>{
         let adist = Math.abs(a[2] - a[4]);
         let bdist = Math.abs(b[2] - b[4]);
-        return adist-bdist;
+        return bdist-adist;
       }
       
       let sortLinksValue = (linkData) => {
@@ -136,10 +149,59 @@ class DepChart {
         }        
       }
 
-      sortLinksValue(forwardLinks);
-      sortLinksValue(backwardLinks);
-      
+      forwardLinks.forEach((x)=>x.sort(depDistCompareFunc));
+      backwardLinks.forEach((x)=>x.sort(depDistCompareFunc));            
+
+      //! compute depLink lanes
+      this.computeDepth(rawDeps);
+      this.computeLane(rawDeps);
       return({"dep": rawDeps, "fwd": forwardLinks, "bck":backwardLinks});
+    }
+
+    computeDepth(rawDeps){
+      let counter = 0;
+      let nToken = this.tokenData.length;
+      let depMapPrec = Array.apply(null, Array(nToken)).map((x)=>[]);
+      let depMapFollow = Array.apply(null, Array(nToken)).map((x)=>[]);
+      for(let dep_x of rawDeps){
+        let precIdx = Math.min(dep_x[2], dep_x[4]);
+        let followIdx = Math.max(dep_x[2], dep_x[4]);
+        depMapPrec[precIdx].push(dep_x);
+        depMapFollow[followIdx].push(dep_x);
+      }
+
+      let tokenIdx = 0;      
+      let depDistCompareFunc = (a,b)=>{
+        let adist = Math.abs(a[2] - a[4]);
+        let bdist = Math.abs(b[2] - b[4]);
+        return adist-bdist;
+      }
+
+      let openCounter = 0;
+      let depBuffer = [];
+      while(tokenIdx < this.tokenData.length){
+        //! cleanup closing deps
+        let endingDeps = depMapFollow[tokenIdx];
+        endingDeps = endingDeps.sort(depDistCompareFunc);
+        for(let dep_x of endingDeps){          
+          dep_x["depth"] = openCounter;          
+          openCounter -= 1;
+        }
+
+        //! creating opening deps
+        let startingDeps = depMapPrec[tokenIdx];
+        startingDeps = startingDeps.sort(depDistCompareFunc).reverse();
+        for(let dep_x of startingDeps){          
+          openCounter += 1;
+        }
+
+        tokenIdx += 1;
+      }
+    }
+
+    computeLane(rawDeps) {
+      let maxDepth = Math.max.apply(null, rawDeps.map((x)=>x.depth));
+      rawDeps.forEach((x)=>x.lane = maxDepth - x.depth);
     }
 
     drawToken(data){
@@ -174,10 +236,13 @@ class DepChart {
         .data(rawDeps)
         .enter().append("path")
         .attr("fill", "none")
-        .attr("stroke", "blue")
+        .attr("stroke", (d, i) => {
+          return "blue";
+        })
         .attr("d", (d, i)=>{
-          return this.generatePathData(d, i, depData);
+          return this.generatePathData(d, depData);
         });
+        
     }
 
     // theta in radian
@@ -186,28 +251,83 @@ class DepChart {
       return {x: r*Math.cos(theta), y: r*Math.sin(theta)};
     }       
     
-    generatePathData(dep, depIdx, depData){
-      let govLayout = this.tokenData[dep[2]]["layout"];
-      let depLayout = this.tokenData[dep[4]]["layout"];
-      let govLoc = {theta: govLayout.theta, r: govLayout.r};
-      let depLoc = {theta: depLayout.theta, r: depLayout.r};
+    generatePathData(dep, depData){
+      let govIdx = dep[2];
+      let depIdx = dep[4];
+      let govLayout = this.tokenData[govIdx]["layout"];
+      let depLayout = this.tokenData[depIdx]["layout"];
+      let govEndpoint = this.getEndpoint(dep, depData, govIdx, govLayout);
+      let depEndpoint = this.getEndpoint(dep, depData, depIdx, depLayout);
       
-      let path_data = [];
-      let nStep = Math.ceil(Math.abs(depLoc.theta - govLoc.theta) / (Math.PI / 20));
-      let stepi = 0;
-      while (stepi < nStep){
-        let theta_x = (depLoc.theta - govLoc.theta) * (stepi / nStep) + govLoc.theta;
-        let r_x = (depLoc.r - govLoc.r) * (stepi / nStep) + govLoc.r;
+      //! draw vertical tangent line in governor side
+      let c_govAnchor = this.toCartesian(govEndpoint.anchorR, govEndpoint.anchorTheta);
+      let c_depAnchor = this.toCartesian(depEndpoint.anchorR, depEndpoint.anchorTheta);
+      let c_govEndpoint = this.toCartesian(govEndpoint.endpointR, govEndpoint.endpointTheta);
+      let c_depEndpoint = this.toCartesian(depEndpoint.endpointR, depEndpoint.endpointTheta);
+
+      let path_data = [];  
+
+      path_data.push(
+        {x: c_govAnchor.x, y: c_govAnchor.y}, 
+        {x: c_govEndpoint.x, y: c_govEndpoint.y} );      
+            
+
+      //! draw the arc
+      let theta_x = govEndpoint.endpointTheta;
+      
+      let counter = 0;
+      let sgn = Math.sign(depEndpoint.endpointTheta - govEndpoint.endpointTheta);
+      while (true){        
+        let r_x = this.computeLaneR(this.computeR(theta_x), dep.lane);
         let cart = this.toCartesian(r_x, theta_x);
         path_data.push({ x: cart.x, y: cart.y });
-        stepi += 1;
+        let linkStepDist = 5;
+        theta_x += sgn * 2 * Math.asin(linkStepDist / (2 * r_x));        
+        
+        if ((sgn > 0 && theta_x > depEndpoint.endpointTheta) || 
+            (sgn < 0 && theta_x < depEndpoint.endpointTheta)){
+          break;
+        }
+
+        if (counter > 1000) {          
+          break;
+        }
+        counter += 1;
       }
+
+      //! draw vertical tangent line in dependent side
+      path_data.push(
+        {x: c_depEndpoint.x, y: c_depEndpoint.y},
+        {x: c_depAnchor.x, y: c_depAnchor.y});
+
       let line = d3.line().x((d)=>d.x).y((d)=>d.y);
       let dd = line(path_data);
       
       return dd;
     }
     
+    computeLaneR(spiralR, lane){
+      return spiralR - (lane * 2 + 5);
+    }
+
+    getEndpoint(dep, depData, tokenIdx, tokenLoc){
+            
+      let fwdIdx = depData.fwd[tokenIdx].indexOf(dep);
+      let bckIdx = depData.bck[tokenIdx].indexOf(dep);
+      
+      let anchor = 0;
+      let theta = 0;
+      let r = this.computeLaneR(tokenLoc.r, dep.lane);
+      if (fwdIdx >= 0){
+        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 + 0.05 * fwdIdx;
+      } else {
+        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 - 0.05 * (bckIdx+1);
+      }      
+
+      // debugger;
+      return {anchorR: tokenLoc.r, anchorTheta: theta,
+              endpointR: r, endpointTheta: theta};
+    }
 }
 
 window.onload = (x)=>{
