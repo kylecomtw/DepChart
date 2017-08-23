@@ -9,11 +9,15 @@ class DepChart {
         this.SPIRAL_FAC = 1;
         this.sentenceBases = [0];
         this.tokenData = [];
-        this.debugSlice = 17;
+        this.debugSlice = -1;
+        this.linkColor = "#87CEEB";
+
         d3.json("data/token_data.json", (err, resp) => {
             // console.log(err);
             // console.log(resp);            
-            resp = resp.slice(this.debugSlice, this.debugSlice + 1) ;
+            if (this.debugSlice > 0){
+              resp = resp.slice(this.debugSlice, this.debugSlice + 4) ;
+            }
             let sentCounter = 0;          
             for(let sent of resp){
               sentCounter += sent.length;
@@ -28,8 +32,6 @@ class DepChart {
 
             this.loadDependencies();
         });
-
-                
                   
     }
     
@@ -40,11 +42,22 @@ class DepChart {
           console.log(err);
           return;
         }
-        resp = resp.slice(this.debugSlice, this.debugSlice + 1) ;
+        if (this.debugSlice > 0){
+          resp = resp.slice(this.debugSlice, this.debugSlice + 4) ;
+        }
+
         resp.forEach((sent_x, sent_i) => {
           sent_x.forEach((token_x) => {
+            if (token_x[0] == "root") return;
             token_x[2] += this.sentenceBases[sent_i] - 1;
             token_x[4] += this.sentenceBases[sent_i] - 1;
+            
+            if(token_x[1] != this.tokenData[token_x[2]][0]){
+              debugger;
+            }
+            if(token_x[3] != this.tokenData[token_x[4]][0]){
+              debugger;
+            }
           });
         });
         
@@ -207,7 +220,9 @@ class DepChart {
     drawToken(data){
       let nToken = data.length;      
       let ori = {x: this.width / 2, y: this.height / 2};
-      let g = d3.select(".chart").append("g");            
+      let g = d3.select(".chart")
+        .append("g").attr("id", "spiral-wrapper")
+        .append("g");
       let xdist = 0;
       let token_elems = g
         .attr("transform", `translate(${ori.x}, ${ori.y}) rotate(180)`)  
@@ -218,9 +233,21 @@ class DepChart {
         .attr("transform", (d, i) => {
           let o = d.layout;                          
           return `translate(${o.x}, ${o.y}) rotate(${o.rot})`
+        })
+        .attr("token-id", (d, i) => i)
+        .on("click", (d, i) => {
+
+          d3.selectAll(".dep-link")
+            .attr("stroke", this.linkColor);
+          d3.selectAll(".dep-gov-" + i)
+            .attr("stroke", "red");     
+          d3.selectAll(".dep-dep-" + i)
+            .attr("stroke", "orange");       
         });
 
-      token_elems.append("circle").attr("r", 0);
+      token_elems.append("circle")
+        .attr("r", 0)
+        .attr("cx", (d,i)=>d.layout.w/2);
       token_elems.append("text")
         .attr("text-anchor", "start")            
         .text((d)=>d[0]);
@@ -233,14 +260,17 @@ class DepChart {
         .attr("id", "deps-g");
       let dep_elem = g
         .selectAll("path")
-        .data(rawDeps)
+        .data(rawDeps)        
         .enter().append("path")
         .attr("fill", "none")
         .attr("stroke", (d, i) => {
-          return "blue";
+          return this.linkColor;
         })
         .attr("d", (d, i)=>{
           return this.generatePathData(d, depData);
+        })
+        .attr("class", (d, i)=>{
+          return "dep-link dep-gov-" + d[2] + " dep-dep-" + d[4]
         });
         
     }
@@ -319,9 +349,9 @@ class DepChart {
       let theta = 0;
       let r = this.computeLaneR(tokenLoc.r, dep.lane);
       if (fwdIdx >= 0){
-        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 + 0.05 * fwdIdx;
+        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 + 0.03 * (fwdIdx+0.5);
       } else {
-        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 - 0.05 * (bckIdx+1);
+        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 - 0.03 * (bckIdx+0.5);
       }      
 
       // debugger;

@@ -12,3 +12,18 @@ svg.chart {
   visibility: hidden;
   white-space: nowrap;
 }
+
+#spiral-wrapper {
+  animation: spin 0s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+    transform-origin: 50% 50%;
+  }
+  100% {
+    transform: rotate(360deg);
+    transform-origin: 50% 50%;
+  }
+}
