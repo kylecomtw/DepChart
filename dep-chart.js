@@ -5,14 +5,16 @@ class DepChart {
         let svgRect = svg.node().getBoundingClientRect();
         this.width = svgRect.width;
         this.height = svgRect.height;
-        this.MIN_R = 40;
-        this.SPIRAL_FAC = 1;
+        this.MIN_R = 80;
+        this.SPIRAL_FAC = 0.8;
+        this.DEP_OUTER_RING = true;
+        this.OUTER_RING_CORRECTION = 5;
         this.sentenceBases = [0];
         this.tokenData = [];
         this.debugSlice = -1;
         this.linkColor = "#87CEEB";
 
-        d3.json("data/token_data.json", (err, resp) => {
+        d3.json("data/token_data_2.json", (err, resp) => {
             // console.log(err);
             // console.log(resp);            
             if (this.debugSlice > 0){
@@ -37,7 +39,7 @@ class DepChart {
     
     loadDependencies() {
 
-      d3.json("data/dep_data.json", (err, resp) => {
+      d3.json("data/dep_data_2.json", (err, resp) => {
         if(err){
           console.log(err);
           return;
@@ -51,13 +53,7 @@ class DepChart {
             if (token_x[0] == "root") return;
             token_x[2] += this.sentenceBases[sent_i] - 1;
             token_x[4] += this.sentenceBases[sent_i] - 1;
-            
-            if(token_x[1] != this.tokenData[token_x[2]][0]){
-              debugger;
-            }
-            if(token_x[3] != this.tokenData[token_x[4]][0]){
-              debugger;
-            }
+                        
           });
         });
         
@@ -236,7 +232,6 @@ class DepChart {
         })
         .attr("token-id", (d, i) => i)
         .on("click", (d, i) => {
-
           d3.selectAll(".dep-link")
             .attr("stroke", this.linkColor);
           d3.selectAll(".dep-gov-" + i)
@@ -244,13 +239,22 @@ class DepChart {
           d3.selectAll(".dep-dep-" + i)
             .attr("stroke", "orange");       
         });
+        
+        
 
       token_elems.append("circle")
         .attr("r", 0)
         .attr("cx", (d,i)=>d.layout.w/2);
       token_elems.append("text")
+        .attr("class", "token-text")
         .attr("text-anchor", "start")            
         .text((d)=>d[0]);
+      token_elems.append("text")
+        .attr("class", "token-pos")        
+        .attr("text-anchor", "middle") 
+        .attr("dx", (d)=>d.layout.w/2)
+        .attr("dy", (d)=>d.layout.h - 5)              
+        .text((d)=>mapPos(d[1]));
     }
     
     drawDeps(depData) {
@@ -307,8 +311,9 @@ class DepChart {
       
       let counter = 0;
       let sgn = Math.sign(depEndpoint.endpointTheta - govEndpoint.endpointTheta);
+      let token_h = govLayout.h;
       while (true){        
-        let r_x = this.computeLaneR(this.computeR(theta_x), dep.lane);
+        let r_x = this.computeLaneR(this.computeR(theta_x), token_h, dep.lane);
         let cart = this.toCartesian(r_x, theta_x);
         path_data.push({ x: cart.x, y: cart.y });
         let linkStepDist = 5;
@@ -336,8 +341,12 @@ class DepChart {
       return dd;
     }
     
-    computeLaneR(spiralR, lane){
-      return spiralR - (lane * 2 + 5);
+    computeLaneR(spiralR, token_h, lane){
+      if (this.DEP_OUTER_RING){
+        return spiralR + token_h - this.OUTER_RING_CORRECTION + (lane * 2 + 5);
+      } else {
+        return spiralR - (lane * 2 + 5);
+      }
     }
 
     getEndpoint(dep, depData, tokenIdx, tokenLoc){
@@ -347,16 +356,20 @@ class DepChart {
       
       let anchor = 0;
       let theta = 0;
-      let r = this.computeLaneR(tokenLoc.r, dep.lane);
+      let r = this.computeLaneR(tokenLoc.r, tokenLoc.h, dep.lane);
       if (fwdIdx >= 0){
-        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 + 0.03 * (fwdIdx+0.5);
+        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 + 0.01 * (fwdIdx+0.5);
       } else {
-        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 - 0.03 * (bckIdx+0.5);
+        theta = tokenLoc.theta + tokenLoc.thetaDelta / 2 - 0.01 * (bckIdx+0.5);
       }      
 
       // debugger;
-      return {anchorR: tokenLoc.r, anchorTheta: theta,
-              endpointR: r, endpointTheta: theta};
+      let ret = {anchorR: tokenLoc.r, anchorTheta: theta,
+             endpointR: r, endpointTheta: theta};
+      if (this.DEP_OUTER_RING){
+        ret.anchorR += tokenLoc.h - this.OUTER_RING_CORRECTION;
+      }
+      return ret;
     }
 }
 
