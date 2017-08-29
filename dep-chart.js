@@ -1,7 +1,9 @@
 
 class DepChart {    
-    constructor(){              
-        let svg = d3.select(".chart");
+    constructor(intext, isTest){     
+        d3.select("#spiral-wrapper").remove();
+        let svg = d3.select(".chart");        
+
         let svgRect = svg.node().getBoundingClientRect();
         this.width = svgRect.width;
         this.height = svgRect.height;
@@ -14,54 +16,75 @@ class DepChart {
         this.debugSlice = -1;
         this.linkColor = "#87CEEB";
 
-        d3.json("data/token_data_2.json", (err, resp) => {
-            // console.log(err);
-            // console.log(resp);            
-            if (this.debugSlice > 0){
-              resp = resp.slice(this.debugSlice, this.debugSlice + 4) ;
-            }
-            let sentCounter = 0;          
-            for(let sent of resp){
-              sentCounter += sent.length;
-              this.sentenceBases.push(sentCounter);              
-            }
-            this.sentenceBases.pop();
-            
-            let data = resp.reduce((a,b)=>a.concat(b));
-            // data = data.splice(0, 20);            
-            this.tokenData = this.measureToken(data);
-            this.drawToken(this.tokenData);
-
-            this.loadDependencies();
-        });
-                  
+        if(isTest){
+          this.loadTestData();
+        } else {
+          console.log(intext);
+          let endpoint = "https://desolate-chamber-88538.herokuapp.com/";
+          d3.request(endpoint)
+            .mimeType("application/json")
+            .post(intext, (err, rawData)=>{
+            if(err){
+              console.log(err);
+              return;
+            }                        
+            this.loadParsingData(JSON.parse(rawData.response));            
+            document.querySelector("#waiting-wrapper").classList.remove("active");
+          });
+        }
+                
     }
     
-    loadDependencies() {
-
-      d3.json("data/dep_data_2.json", (err, resp) => {
-        if(err){
-          console.log(err);
-          return;
-        }
-        if (this.debugSlice > 0){
-          resp = resp.slice(this.debugSlice, this.debugSlice + 4) ;
-        }
-
-        resp.forEach((sent_x, sent_i) => {
-          sent_x.forEach((token_x) => {
-            if (token_x[0] == "root") return;
-            token_x[2] += this.sentenceBases[sent_i] - 1;
-            token_x[4] += this.sentenceBases[sent_i] - 1;
-                        
-          });
+    loadTestData(){
+      d3.json("data/token_data_2.json", (err, resp_token) => {
+        d3.json("data/dep_data_2.json", (err, resp_dep) => {
+          this.loadParsingData({"tokens": resp_token, "deps": resp_dep});
         });
-        
-        let depList = resp.reduce((a,b)=>a.concat(b));        
-        let depData = this.preprocessDeps(depList);
-        console.log(depData);
-        this.drawDeps(depData);
-      })
+      });
+              
+    }
+
+    loadParsingData(data) {
+      // console.log(err);
+      // console.log(resp);            
+      let tokens = data.tokens;
+      if (this.debugSlice > 0){
+        tokens = tokens.slice(this.debugSlice, this.debugSlice + 4) ;
+      }
+      let sentCounter = 0;          
+      for(let sent of tokens){
+        sentCounter += sent.length;
+        this.sentenceBases.push(sentCounter);              
+      }
+      this.sentenceBases.pop();
+      
+      let tmp_data = tokens.reduce((a,b)=>a.concat(b));
+      // data = data.splice(0, 20);            
+      this.tokenData = this.measureToken(tmp_data);
+      this.drawToken(this.tokenData);
+
+      this.loadDependencies(data.deps);
+    }
+
+    loadDependencies(deps) {      
+
+      if (this.debugSlice > 0){
+        deps = deps.slice(this.debugSlice, this.debugSlice + 4) ;
+      }
+
+      deps.forEach((sent_x, sent_i) => {
+        sent_x.forEach((token_x) => {
+          if (token_x[0] == "root") return;
+          token_x[2] += this.sentenceBases[sent_i] - 1;
+          token_x[4] += this.sentenceBases[sent_i] - 1;
+                      
+        });
+      });
+      
+      let depList = deps.reduce((a,b)=>a.concat(b));        
+      let depData = this.preprocessDeps(depList);
+      console.log(depData);
+      this.drawDeps(depData);      
     }
 
     computeR(theta){
@@ -375,6 +398,25 @@ class DepChart {
 
 window.onload = (x)=>{
     console.log("loaded");
-    depChart = new DepChart();
+    let $_GET = [];
+    window.location.href.replace(/[?&]+([^=&]+)=([^&]*)/gi,
+      function(a,name,value){$_GET[name]=value;});
+    if ("text" in $_GET){
+      let text = $_GET["text"];
+      text = decodeURIComponent(text);
+      console.log(text)
+      let depChart = new DepChart(text, false);
+    } else {
+      let depChart = new DepChart("", true);
+    }
+    
+    document.querySelector("#input-box").addEventListener("keypress", (e)=>{
+      let key = e.which || e.keyCode;
+      if (key == 13){
+        document.querySelector("#waiting-wrapper").className = "active";        
+        let depChart = new DepChart(e.srcElement.value, false);
+        
+      }
+    });
 };
 

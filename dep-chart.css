@@ -1,12 +1,75 @@
 #chart-wrapper{
   width: 100%;
   height: 1000px;  
+  background: radial-gradient(ellipse at 50% 50%, #3E3E3E 0%, #000000 100%);
 }
 
 svg.chart {
   width: 100%;
   height: 100%;
-  background: radial-gradient(ellipse at 50% 50%, #3E3E3E 0%, #000000 100%);
+  
+}
+
+#input-wrapper {
+  width: 100%;  
+  top: 0; left: 0;
+  position: absolute;
+}
+
+#input-box {
+  width: 50%;
+  display: block;
+  background-color: black;
+  border: 1px solid white;
+  margin: 2% auto;  
+  height: 24pt;
+  color: white;
+  font-size: 16pt;
+  padding-left: 10px;
+}
+
+/* Transparent Overlay */
+#waiting-wrapper:before {
+  content: '';
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+}
+
+#waiting-wrapper.active {
+  display: block;
+}
+
+#waiting-wrapper {
+  display: none;
+  position: fixed;
+  z-index: 999;
+  height: 2em;
+  width: 250pt;
+  overflow: show;
+  margin: auto;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+}
+
+#waiting-message{
+  opacity: 0.5;
+  position: relative;
+  color:white;
+  font-size: 24pt;
+  animation: msg-opacity 3s ease-in-out infinite;
+}
+
+@keyframes msg-opacity {
+  0% {opacity: 0.5;}
+  50% {opacity: 1.0;}
+  100% {opacity: 0.5;}
 }
 
 .invisible {
